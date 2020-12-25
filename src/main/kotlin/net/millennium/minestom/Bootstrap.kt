@@ -22,43 +22,65 @@
 
 package net.millennium.minestom
 
+import net.minestom.server.Bootstrap
 import net.minestom.server.MinecraftServer
-import net.minestom.server.event.player.PlayerLoginEvent
-import net.minestom.server.instance.Chunk
-import net.minestom.server.instance.ChunkGenerator
-import net.minestom.server.instance.ChunkPopulator
-import net.minestom.server.instance.batch.ChunkBatch
-import net.minestom.server.instance.block.Block
-import net.minestom.server.utils.Position
-import net.minestom.server.world.biomes.Biome
-import java.util.*
+import net.minestom.server.ping.ResponseData
+import net.minestom.vanilla.PlayerInit
+import net.minestom.vanilla.anvil.FileSystemStorage
+import net.minestom.vanilla.blocks.VanillaBlocks
+import net.minestom.vanilla.commands.VanillaCommands
+import net.minestom.vanilla.gamedata.loottables.VanillaLootTables
+import net.minestom.vanilla.generation.VanillaWorldgen
+import net.minestom.vanilla.items.VanillaItems
+import net.minestom.vanilla.system.NetherPortal
+import net.minestom.vanilla.system.ServerProperties
+import java.io.File
 
-fun main(vararg arguments : String) {
-    println(arguments)
-    val server = MinecraftServer.init()
-    val container = MinecraftServer.getInstanceManager()
-        .createInstanceContainer()
-    container.setChunkGenerator(ChunkGeneratorBase()).also {
-        container.enableAutoChunkLoad(true)
-    }
 
-    val handler = MinecraftServer.getGlobalEventHandler()
-    handler.addEventCallback(PlayerLoginEvent::class.java) {
-        it.setSpawningInstance(container)
-        it.player.respawnPoint = Position(0.0F, 42.0F, 0.0F)
-    }
-    server.start("localhost", 25565);
+fun main(vararg arguments: String) {
+    val argsWithMixins = arrayOfNulls<String>(arguments.size + 2)
+    System.arraycopy(arguments, 0, argsWithMixins, 0, arguments.size)
+
+    argsWithMixins[argsWithMixins.size - 2] = "--mixin"
+    argsWithMixins[argsWithMixins.size - 2] = "mixins.vanilla.json"
+    Bootstrap.bootstrap("net.millennium.minestom.LaunchServerStartup", argsWithMixins)
 }
 
-internal class ChunkGeneratorBase : ChunkGenerator {
-    override fun generateChunkData(batch: ChunkBatch, chunkX: Int, chunkZ: Int) {
-        for (x in 0 until Chunk.CHUNK_SIZE_X) for (z in 0 until Chunk.CHUNK_SIZE_Z) for (y in 0..39)
-            batch.setBlock(x, y, z, Block.STONE)
+class LaunchServerStartup {
+    companion object {
+        @JvmStatic
+        fun main(vararg arguments: String) {
+            val server = MinecraftServer.init()
+            val commandManager = MinecraftServer.getCommandManager()
+            VanillaWorldgen.prepareFiles().also {
+                VanillaWorldgen.registerAllBiomes(MinecraftServer.getBiomeManager())
+            }
+            VanillaCommands.registerAll(commandManager)
+            VanillaItems.registerAll(MinecraftServer.getConnectionManager())
+            VanillaBlocks.registerAll(MinecraftServer.getConnectionManager(), MinecraftServer.getBlockManager())
+            NetherPortal.registerData(MinecraftServer.getDataManager())
+            val lootTableManager = MinecraftServer.getLootTableManager()
+            VanillaLootTables.register(lootTableManager)
+
+            MinecraftServer.getStorageManager().defineDefaultStorageSystem { FileSystemStorage() }
+            val properties = ServerProperties(File(".", "server.properties"))
+            PlayerInit.init(properties)
+
+            MinecraftServer.getSchedulerManager().buildShutdownTask {
+                val connectionManager = MinecraftServer.getConnectionManager()
+                connectionManager.onlinePlayers.forEach {
+                    it.kick("[Kernel] Server is closing ")
+                    connectionManager.removePlayer(it.playerConnection)
+                }
+            }
+
+            server.start(properties["server-ip"], properties["server-port"].toInt()) { _, response: ResponseData ->
+                response.setName(MinecraftServer.VERSION_NAME)
+                response.setMaxPlayer(properties["max-players"].toInt())
+                response.setOnline(MinecraftServer.getConnectionManager().onlinePlayers.size)
+                response.setDescription(properties["motd"])
+                response.setFavicon("data:image/png;base64,<data>")
+            }
+        }
     }
-
-    override fun fillBiomes(biomes: Array<out Biome>, chunkX: Int, chunkZ: Int)
-            = Arrays.fill(biomes, Biome.PLAINS);
-
-    override fun getPopulators(): MutableList<ChunkPopulator>? = null
-
 }
