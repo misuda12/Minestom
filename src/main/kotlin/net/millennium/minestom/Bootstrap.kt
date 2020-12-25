@@ -23,64 +23,16 @@
 package net.millennium.minestom
 
 import net.minestom.server.Bootstrap
-import net.minestom.server.MinecraftServer
-import net.minestom.server.ping.ResponseData
-import net.minestom.vanilla.PlayerInit
-import net.minestom.vanilla.anvil.FileSystemStorage
-import net.minestom.vanilla.blocks.VanillaBlocks
-import net.minestom.vanilla.commands.VanillaCommands
-import net.minestom.vanilla.gamedata.loottables.VanillaLootTables
-import net.minestom.vanilla.generation.VanillaWorldgen
-import net.minestom.vanilla.items.VanillaItems
-import net.minestom.vanilla.system.NetherPortal
-import net.minestom.vanilla.system.ServerProperties
-import java.io.File
-
 
 fun main(vararg arguments: String) {
     val argsWithMixins = arrayOfNulls<String>(arguments.size + 2)
     System.arraycopy(arguments, 0, argsWithMixins, 0, arguments.size)
 
     argsWithMixins[argsWithMixins.size - 2] = "--mixin"
-    argsWithMixins[argsWithMixins.size - 2] = "mixins.vanilla.json"
-    Bootstrap.bootstrap("net.millennium.minestom.LaunchServerStartup", argsWithMixins)
-}
+    argsWithMixins[argsWithMixins.size - 1] = "mixins.vanilla.json"
 
-class LaunchServerStartup {
-    companion object {
-        @JvmStatic
-        fun main(vararg arguments: String) {
-            val server = MinecraftServer.init()
-            val commandManager = MinecraftServer.getCommandManager()
-            VanillaWorldgen.prepareFiles().also {
-                VanillaWorldgen.registerAllBiomes(MinecraftServer.getBiomeManager())
-            }
-            VanillaCommands.registerAll(commandManager)
-            VanillaItems.registerAll(MinecraftServer.getConnectionManager())
-            VanillaBlocks.registerAll(MinecraftServer.getConnectionManager(), MinecraftServer.getBlockManager())
-            NetherPortal.registerData(MinecraftServer.getDataManager())
-            val lootTableManager = MinecraftServer.getLootTableManager()
-            VanillaLootTables.register(lootTableManager)
+    println(argsWithMixins)
 
-            MinecraftServer.getStorageManager().defineDefaultStorageSystem { FileSystemStorage() }
-            val properties = ServerProperties(File(".", "server.properties"))
-            PlayerInit.init(properties)
-
-            MinecraftServer.getSchedulerManager().buildShutdownTask {
-                val connectionManager = MinecraftServer.getConnectionManager()
-                connectionManager.onlinePlayers.forEach {
-                    it.kick("[Kernel] Server is closing ")
-                    connectionManager.removePlayer(it.playerConnection)
-                }
-            }
-
-            server.start(properties["server-ip"], properties["server-port"].toInt()) { _, response: ResponseData ->
-                response.setName(MinecraftServer.VERSION_NAME)
-                response.setMaxPlayer(properties["max-players"].toInt())
-                response.setOnline(MinecraftServer.getConnectionManager().onlinePlayers.size)
-                response.setDescription(properties["motd"])
-                response.setFavicon("data:image/png;base64,<data>")
-            }
-        }
-    }
+    // Config.create(argsWithMixins[argsWithMixins.size - 2], MixinEnvironment.getDefaultEnvironment())
+    Bootstrap.bootstrap("net.millennium.minestom.LaunchServerStartupKt", argsWithMixins)
 }
